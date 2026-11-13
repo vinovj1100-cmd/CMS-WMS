@@ -139,7 +139,7 @@ export default function RecentComments() {
 
                 <div className="flex items-center justify-between text-xs text-muted-foreground">
                   <div className="flex items-center space-x-2">
-                    <span>on "{comment.article}"</span>
+                    <span>on &quot;{comment.article}&quot;</span>
                     <span>•</span>
                     <span>{comment.timestamp}</span>
                   </div>

@@ -96,7 +96,7 @@ export default function PrivacySettings() {
                 Show Activity Status
               </Label>
               <p className="text-xs text-gray-600 dark:text-gray-400">
-                Let others see when you're online or recently active
+                Let others see when you&apos;re online or recently active
               </p>
             </div>
             <Switch
@@ -209,7 +209,7 @@ export default function PrivacySettings() {
               <Label htmlFor="readingHistory" className="text-sm font-medium">
                 Reading History
               </Label>
-              <p className="text-xs text-gray-600 dark:text-gray-400">Track articles you've read for recommendations</p>
+              <p className="text-xs text-gray-600 dark:text-gray-400">Track articles you&apos;ve read for recommendations</p>
             </div>
             <Switch
               id="readingHistory"
@@ -253,7 +253,7 @@ export default function PrivacySettings() {
               <Label htmlFor="shareActivity" className="text-sm font-medium">
                 Share Activity
               </Label>
-              <p className="text-xs text-gray-600 dark:text-gray-400">Let others see articles you've shared or liked</p>
+              <p className="text-xs text-gray-600 dark:text-gray-400">Let others see articles you&apos;ve shared or liked</p>
             </div>
             <Switch
               id="shareActivity"

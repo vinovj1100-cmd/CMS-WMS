@@ -214,7 +214,7 @@ export function ResetPasswordForm() {
                 </Button>
 
                 <p className="text-sm text-slate-500">
-                  For security reasons, you'll need to sign in again on all your devices.
+                  For security reasons, you&apos;ll need to sign in again on all your devices.
                 </p>
               </div>
             </div>

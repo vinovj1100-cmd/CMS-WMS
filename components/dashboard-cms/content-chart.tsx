@@ -11,6 +11,7 @@ import {
   BarElement,
 } from "chart.js"
 import { Line, Bar } from "react-chartjs-2"
+import { useIsSmallScreen } from "@/hooks/use-media-query"
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, BarElement)
 
@@ -155,6 +156,8 @@ const mobileChartOptions = {
 }
 
 export default function ContentChart() {
+  const isSmall = useIsSmallScreen()
+
   return (
     <div className="grid gap-4 sm:gap-6 grid-cols-1 xl:grid-cols-2">
       {/* Content Performance Chart */}
@@ -168,7 +171,7 @@ export default function ContentChart() {
           </select>
         </div>
         <div className="h-64 sm:h-80 w-full">
-          <Line data={contentData} options={window.innerWidth < 640 ? mobileChartOptions : chartOptions} />
+          <Line data={contentData} options={isSmall ? mobileChartOptions : chartOptions} />
         </div>
       </div>
 
@@ -179,7 +182,7 @@ export default function ContentChart() {
           <span className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">This year</span>
         </div>
         <div className="h-48 sm:h-64 w-full">
-          <Bar data={categoryData} options={window.innerWidth < 640 ? mobileChartOptions : chartOptions} />
+          <Bar data={categoryData} options={isSmall ? mobileChartOptions : chartOptions} />
         </div>
       </div>
     </div>

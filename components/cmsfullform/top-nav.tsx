@@ -14,21 +14,15 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { ThemeToggle } from "../theme-toggle"
+import { useSidebarState } from "@/components/app-shell/sidebar-context"
 import Link from "next/link"
 
 export default function TopNav() {
-  const handleMenuToggle = () => {
-    if (typeof window !== "undefined" && (window as any).toggleMenuState) {
-      ;(window as any).toggleMenuState()
-    }
-  }
+  const sidebar = useSidebarState()
 
-  const handleMobileMenuToggle = () => {
-    if (typeof window !== "undefined" && (window as any).setIsMobileMenuOpen) {
-      const currentState = (window as any).isMobileMenuOpen || false
-      ;(window as any).setIsMobileMenuOpen(!currentState)
-    }
-  }
+  const handleMenuToggle = () => sidebar?.toggleMenuState()
+
+  const handleMobileMenuToggle = () => sidebar?.toggleMobileMenu()
 
   return (
     <div className="flex items-center justify-between h-full px-4 lg:px-6">
