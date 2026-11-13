@@ -70,9 +70,8 @@ export function withAuth(
         })
       }
 
-      // 2. CSRF for state-changing methods. Applied to public routes too —
-      //    login CSRF is a real attack (an attacker pins their own session to
-      //    the victim's browser), so the login page fetches a token first.
+      // 2. CSRF for state-changing methods, including any public route using
+      //    this guard. Login and logout verify CSRF explicitly in their routes.
       if (!options.skipCsrf && requiresCsrf(request.method)) {
         const csrf = verifyCsrf(request)
         if (!csrf.ok) {

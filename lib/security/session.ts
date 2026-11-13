@@ -82,7 +82,7 @@ export function sessionCookieOptions() {
   const config = getConfig()
   return {
     httpOnly: true,
-    sameSite: "lax" as const,
+    sameSite: config.previewEmbedding ? ("none" as const) : ("lax" as const),
     secure: config.requireSecureCookies,
     path: "/",
     maxAge: config.sessionTtlSeconds,

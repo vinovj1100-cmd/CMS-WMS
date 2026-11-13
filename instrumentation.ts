@@ -9,8 +9,9 @@ import { assertSecureConfig, getConfig, inspectConfig } from "@/lib/security/con
  * whereas "you're signing sessions with the public dev secret" should.
  */
 export async function register() {
-  // Only the Node runtime has crypto/fs; skip on the edge runtime.
-  if (process.env.NEXT_RUNTIME !== "nodejs") return
+  // Only the Node runtime has crypto/fs; skip on the edge runtime. Build-time
+  // prerendering is not a running deployment and must not need runtime secrets.
+  if (process.env.NEXT_RUNTIME !== "nodejs" || process.env.NEXT_PHASE === "phase-production-build") return
 
   const config = getConfig()
 

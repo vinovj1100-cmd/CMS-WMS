@@ -2,9 +2,10 @@ import type { NextRequest } from "next/server"
 
 import { ApiError, ok, parseBody, toErrorResponse } from "@/lib/api/http"
 import { clientIp, recordAudit, userAgent } from "@/lib/security/audit"
-import { rotateCsrfToken } from "@/lib/security/csrf"
+import { rotateCsrfToken, verifyCsrf } from "@/lib/security/csrf"
 import { getConfig } from "@/lib/security/config"
 import { evaluatePasswordStrength, verifyPassword } from "@/lib/security/password"
+import { partitionPreviewCookies } from "@/lib/security/preview-cookies"
 import { clearLoginThrottle, enforceLoginThrottle } from "@/lib/api/guard"
 import { createSessionRecord, sessionCookieOptions } from "@/lib/security/session"
 import { loginSchema } from "@/lib/wms/schemas"
@@ -13,11 +14,8 @@ import { getStore } from "@/lib/wms/store"
 /**
  * POST /api/auth/login
  *
- * Defence layers, in order:
- *   1. per-account+IP rate limit (brute force)
- *   2. account lockout state
- *   3. scrypt verification in constant time
- *   4. account status checks
+ * Defence layers: CSRF verification, per-account+IP rate limiting, scrypt
+ * password verification, and account status/lockout checks.
  *
  * Failure messages deliberately do not distinguish "no such user" from "wrong
  * password" — otherwise the endpoint becomes a username enumeration oracle.
@@ -31,6 +29,9 @@ export async function POST(request: NextRequest) {
   let username = "unknown"
 
   try {
+    const csrfCheck = verifyCsrf(request)
+    if (!csrfCheck.ok) throw new ApiError("CSRF_FAILED", csrfCheck.reason ?? "CSRF validation failed.")
+
     const body = await parseBody(request, loginSchema)
     username = body.username
 
@@ -142,7 +143,7 @@ export async function POST(request: NextRequest) {
 
     response.cookies.set(getConfig().cookieName, token, sessionCookieOptions())
     response.cookies.set(csrf.cookieName, csrf.token, csrf.options)
-    return response
+    return partitionPreviewCookies(response)
   } catch (error) {
     return toErrorResponse(error)
   }

@@ -11,8 +11,8 @@ import { newCsrfToken } from "./session"
  * A cross-origin attacker cannot read the cookie value, so it cannot populate
  * the header.
  *
- * This sits on top of `SameSite=Lax` on the session cookie — the two are
- * complementary, not redundant.
+ * Normal sessions also use `SameSite=Lax`. The explicitly enabled development
+ * iframe preview uses Secure, partitioned cross-site cookies instead.
  */
 
 export function csrfCookieOptions() {
@@ -20,7 +20,7 @@ export function csrfCookieOptions() {
   return {
     // Deliberately NOT httpOnly: the browser JS needs to read it.
     httpOnly: false,
-    sameSite: "lax" as const,
+    sameSite: config.previewEmbedding ? ("none" as const) : ("lax" as const),
     secure: config.requireSecureCookies,
     path: "/",
     maxAge: config.sessionTtlSeconds,
@@ -61,8 +61,9 @@ export function verifyCsrf(request: Request): { ok: boolean; reason?: string } {
     }
   }
 
-  // No Origin/Referer at all (same-origin navigation, server-to-server).
-  return { ok: true }
+  // An authenticated request with neither a token pair nor an origin cannot
+  // prove its source. Non-browser clients must send one of the two.
+  return { ok: false, reason: "Missing CSRF token and Origin/Referer" }
 }
 
 /** Rotates the CSRF token. Called on login and on session revocation. */

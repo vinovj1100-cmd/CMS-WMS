@@ -5,14 +5,17 @@
 # compiled server plus only the dependencies it actually loads — no source, no
 # devDependencies, no build toolchain.
 #
-#   docker build -t wms .
+#   docker build --build-arg NEXT_PUBLIC_SITE_URL=https://wms.example.com -t wms .
 #   docker run -d -p 3000:3000 \
 #     -e NODE_ENV=production \
 #     -e NEXT_PUBLIC_SITE_URL=https://wms.example.com \
 #     -e WMS_SESSION_SECRET="$(node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))")" \
-#     -e WMS_SEED_DEMO_DATA=false \
+#     -e WMS_STORAGE_DRIVER=file -e WMS_SEED_DEMO_DATA=false \
 #     -v wms-data:/app/data \
 #     wms
+#
+# This is a pre-production template, not a complete production deployment.
+# An unseeded empty store has no users or warehouses and will not be ready.
 #
 # WMS_SESSION_SECRET is required: the boot-time config gate refuses to start a
 # production process on the built-in development secret.
@@ -67,11 +70,12 @@ ENV NODE_ENV=production \
 RUN addgroup --system --gid 1001 nodejs \
  && adduser --system --uid 1001 nextjs
 
-# Standalone output, static assets and public files. `next start` is not used
-# with output: "standalone" — the server.js below is the entry point.
+# Standalone output, static assets and public files. The launcher validates
+# security configuration before starting the generated standalone server.
 COPY --from=build --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=build --chown=nextjs:nodejs /app/.next/static ./.next/static
 COPY --from=build --chown=nextjs:nodejs /app/public ./public
+COPY --from=build --chown=nextjs:nodejs /app/scripts/standalone-entry.mjs ./standalone-entry.mjs
 
 # Mount point for the "file" storage driver.
 RUN mkdir -p /app/data && chown -R nextjs:nodejs /app/data
@@ -87,4 +91,5 @@ EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD wget --no-verbose --tries=1 --spider http://127.0.0.1:3000/api/health || exit 1
 
-CMD ["node", "server.js"]
+# Validate production security settings before binding a port.
+CMD ["node", "standalone-entry.mjs"]

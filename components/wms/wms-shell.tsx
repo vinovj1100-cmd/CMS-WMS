@@ -29,6 +29,7 @@ import { Button } from "@/components/ui/button"
 import { api, ApiRequestError } from "@/lib/api/client"
 import { ROLE_LABELS } from "@/lib/security/rbac"
 import type { Permission } from "@/lib/security/rbac"
+import { defaultWorkspacePath } from "@/lib/wms/navigation"
 import type { Role } from "@/lib/wms/types"
 import { cn } from "@/lib/utils"
 
@@ -48,6 +49,13 @@ interface SessionUser {
   permissions: Permission[]
   mustChangePassword: boolean
   lastLoginAt: string | null
+}
+
+const WmsUserContext = React.createContext<SessionUser | null>(null)
+
+/** The verified session user, shared with pages for permission-aware controls. */
+export function useWmsUser(): SessionUser | null {
+  return React.useContext(WmsUserContext)
 }
 
 interface NavItem {
@@ -140,6 +148,15 @@ export function WmsShell({ children }: { children: React.ReactNode }) {
   // Close the mobile drawer on navigation.
   React.useEffect(() => setNavOpen(false), [pathname])
 
+  // The reporting dashboard is not available to every role. Route operators
+  // to their inventory workspace before mounting the dashboard and issuing a
+  // request they cannot authorise.
+  const landing = user ? defaultWorkspacePath(user.permissions) : "/wms"
+  const redirectToLanding = pathname === "/wms" && landing !== "/wms"
+  React.useEffect(() => {
+    if (redirectToLanding) router.replace(landing)
+  }, [landing, redirectToLanding, router])
+
   const logout = async () => {
     try {
       await api.post("/api/auth/logout", {})
@@ -226,7 +243,7 @@ export function WmsShell({ children }: { children: React.ReactNode }) {
         <div className="border-t border-gray-200 p-3 dark:border-[#1F1F23]">
           <ShieldCheck className="mb-2 h-4 w-4 text-green-600 dark:text-green-400" />
           <p className="text-[11px] leading-relaxed text-gray-500 dark:text-gray-400">
-            Every action is signed, rate-limited and written to the audit log.
+            The API enforces permissions. Operational actions are recorded when auditing is enabled.
           </p>
         </div>
       </aside>
@@ -275,12 +292,12 @@ export function WmsShell({ children }: { children: React.ReactNode }) {
         </header>
 
         <main id="wms-main" className="flex-1 p-4 sm:p-6">
-          {checking ? (
+          {checking || redirectToLanding ? (
             <div className="flex h-64 items-center justify-center text-sm text-gray-500 dark:text-gray-400">
-              Verifying session…
+              {redirectToLanding ? "Opening your workspace…" : "Verifying session…"}
             </div>
           ) : (
-            children
+            <WmsUserContext.Provider value={user}>{children}</WmsUserContext.Provider>
           )}
         </main>
       </div>

@@ -174,8 +174,8 @@ export function LoginForm() {
 
         <p className="flex items-start gap-1.5 text-xs text-gray-500 dark:text-gray-400">
           <ShieldCheck className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-green-600 dark:text-green-400" />
-          Sessions are HttpOnly and rate-limited. Repeated failures lock the account, and every attempt is written to the
-          audit log.
+          Sessions use HttpOnly cookies and rate limits. Repeated failures lock the account; sign-in events are
+          recorded when auditing is enabled.
         </p>
       </form>
 
@@ -184,8 +184,8 @@ export function LoginForm() {
           Demo accounts
         </summary>
         <p className="mt-2 text-[11px] leading-relaxed text-gray-500 dark:text-gray-400">
-          Present only when <code className="font-mono">WMS_SEED_DEMO_DATA</code> is enabled. Seeding is off by default
-          in production, so these credentials never exist on a real deployment.
+          Created in an empty store when <code className="font-mono">WMS_SEED_DEMO_DATA</code> is enabled. Disabling
+          seeding later does not remove existing demo accounts. Use these credentials for evaluation only.
         </p>
         <ul className="mt-2 space-y-1">
           {DEMO_ACCOUNTS.map((account) => (

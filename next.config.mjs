@@ -1,38 +1,39 @@
 /** @type {import('next').NextConfig} */
 
 /**
- * Security headers applied to every response.
+ * Security headers applied to every response. Next.js development bundles use
+ * eval-based source maps and WebSockets for hot reload; production does not.
  *
- * CSP is reported-only by default so a misconfigured directive cannot white-screen
- * production; flip `CSP_ENFORCE` to `true` once the report stream is clean.
- * The nonce-based policy is assembled per-request in `middleware.ts`, which then
- * overrides `contentSecurityPolicy` below with a nonce'd variant.
+ * Embedded previews are explicitly opt-in and only available in development.
+ * They relax clickjacking protection, so never use them with sensitive data.
+ * Production always keeps frame-ancestors 'none' and X-Frame-Options: DENY.
  */
+const isDevelopment = process.env.NODE_ENV === "development"
+const allowPreviewEmbedding = isDevelopment && process.env.WMS_PREVIEW_EMBED === "true"
+// Enforce by default. Set CSP_ENFORCE=false at build time for report-only mode.
+const enforceCsp = process.env.CSP_ENFORCE !== "false"
+
 const contentSecurityPolicy = [
   "default-src 'self'",
   "base-uri 'self'",
   "object-src 'none'",
-  "frame-ancestors 'none'",
+  allowPreviewEmbedding ? "frame-ancestors *" : "frame-ancestors 'none'",
   "form-action 'self'",
-  "upgrade-insecure-requests",
-  // React's inline runtime + Tailwind need these; no eval() is used anywhere.
-  "script-src 'self' 'unsafe-inline'",
+  // React's inline runtime requires unsafe-inline. Webpack's development-only
+  // source maps additionally require unsafe-eval.
+  `script-src 'self' 'unsafe-inline'${isDevelopment ? " 'unsafe-eval'" : ""}`,
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob:",
   "font-src 'self' data:",
-  "connect-src 'self'",
+  `connect-src 'self'${isDevelopment ? " ws: wss:" : ""}`,
   "manifest-src 'self'",
+  ...(enforceCsp && !isDevelopment ? ["upgrade-insecure-requests"] : []),
 ].join("; ")
-
-const cspHeader =
-  process.env.CSP_ENFORCE === "true"
-    ? contentSecurityPolicy
-    : contentSecurityPolicy.replace(/; upgrade-insecure-requests/, "")
 
 const securityHeaders = [
   {
-    key: "Content-Security-Policy",
-    value: cspHeader,
+    key: enforceCsp ? "Content-Security-Policy" : "Content-Security-Policy-Report-Only",
+    value: contentSecurityPolicy,
   },
   {
     key: "Strict-Transport-Security",
@@ -43,10 +44,7 @@ const securityHeaders = [
     key: "X-Content-Type-Options",
     value: "nosniff",
   },
-  {
-    key: "X-Frame-Options",
-    value: "DENY",
-  },
+  ...(allowPreviewEmbedding ? [] : [{ key: "X-Frame-Options", value: "DENY" }]),
   {
     key: "Referrer-Policy",
     value: "strict-origin-when-cross-origin",
@@ -85,6 +83,8 @@ const nextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
   compress: true,
+  // Next 14 requires this flag to run instrumentation.ts at server startup.
+  experimental: { instrumentationHook: true },
   // Required for the slim container image used in production deployments.
   output: "standalone",
   images: {

@@ -20,8 +20,8 @@ node_modules/
 !.env.example
 *.pem
 
-# Local WMS data store (JSON persistence adapter)
-/data/*.json
+# Local WMS data store, including backups and temporary files.
+/data/*
 !/data/.gitkeep
 
 # Testing

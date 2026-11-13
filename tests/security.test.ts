@@ -34,6 +34,7 @@ function baseConfig(overrides: Partial<AppConfig> = {}): AppConfig {
     dataDir: ".wms-data",
     seedDemoData: false,
     auditLogEnabled: true,
+    previewEmbedding: false,
     requireSecureCookies: true,
     ...overrides,
   }
@@ -164,6 +165,11 @@ describe("CSRF", () => {
       headers: { origin },
     })
     expect(verifyCsrf(request).ok).toBe(true)
+  })
+
+  it("rejects a state-changing request with neither a token pair nor an origin", () => {
+    const request = new Request("https://wms.example.com/api/wms/inventory", { method: "POST" })
+    expect(verifyCsrf(request)).toEqual({ ok: false, reason: "Missing CSRF token and Origin/Referer" })
   })
 
   it("rejects a malformed Origin header rather than failing open", () => {

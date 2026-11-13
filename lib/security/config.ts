@@ -35,6 +35,7 @@ export interface AppConfig {
   readonly dataDir: string
   readonly seedDemoData: boolean
   readonly auditLogEnabled: boolean
+  readonly previewEmbedding: boolean
   readonly requireSecureCookies: boolean
 }
 
@@ -46,6 +47,9 @@ function buildConfig(): AppConfig {
   const nodeEnv = (process.env.NODE_ENV ?? "development") as AppConfig["nodeEnv"]
   const isProduction = nodeEnv === "production"
   const sessionSecret = process.env.WMS_SESSION_SECRET?.trim() || DEV_SECRET
+  // Third-party preview cookies are opt-in, require HTTPS, and are never
+  // enabled in production, even if the flag is accidentally left on.
+  const previewEmbedding = nodeEnv === "development" && process.env.WMS_PREVIEW_EMBED === "true"
 
   return Object.freeze({
     nodeEnv,
@@ -63,8 +67,10 @@ function buildConfig(): AppConfig {
     dataDir: process.env.WMS_DATA_DIR ?? "./data",
     seedDemoData: bool(process.env.WMS_SEED_DEMO_DATA, !isProduction),
     auditLogEnabled: bool(process.env.WMS_AUDIT_LOG, true),
-    // Secure cookies only make sense behind TLS; local dev runs on http.
-    requireSecureCookies: bool(process.env.WMS_SECURE_COOKIES, isProduction),
+    previewEmbedding,
+    // Secure cookies are required for cross-site, partitioned preview cookies.
+    // Normal local dev can use HTTP; production should run behind TLS.
+    requireSecureCookies: previewEmbedding || bool(process.env.WMS_SECURE_COOKIES, isProduction),
   })
 }
 

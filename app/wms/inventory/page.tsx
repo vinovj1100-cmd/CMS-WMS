@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast"
 import { api, qs } from "@/lib/api/client"
 import { useApi, describeError } from "@/hooks/use-wms"
+import { useWmsUser } from "@/components/wms/wms-shell"
 import {
   DataTable,
   DebouncedSearch,
@@ -64,6 +65,8 @@ interface MasterData {
 
 export default function InventoryPage() {
   const { toast } = useToast()
+  const user = useWmsUser()
+  const canAdjust = user?.permissions.includes("inventory:adjust") ?? false
   const [search, setSearch] = React.useState("")
   const [warehouseId, setWarehouseId] = React.useState("all")
   const [lowStockOnly, setLowStockOnly] = React.useState(false)
@@ -145,16 +148,18 @@ export default function InventoryPage() {
       align: "right",
       render: (row) => <span className="font-semibold">{formatNumber(row.available)}</span>,
     },
-    {
-      key: "actions",
-      header: "",
-      align: "right",
-      render: (row) => (
-        <Button variant="ghost" size="sm" onClick={(event) => { event.stopPropagation(); setAdjusting(row) }}>
-          Adjust
-        </Button>
-      ),
-    },
+    ...(canAdjust
+      ? [{
+          key: "actions",
+          header: "",
+          align: "right" as const,
+          render: (row: InventoryRow) => (
+            <Button variant="ghost" size="sm" onClick={(event) => { event.stopPropagation(); setAdjusting(row) }}>
+              Adjust
+            </Button>
+          ),
+        }]
+      : []),
   ]
 
   if (inventory.initialising) return <LoadingState label="Loading inventory…" />

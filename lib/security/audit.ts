@@ -4,11 +4,10 @@ import { getStore } from "@/lib/wms/store"
 import type { AuditEntry, AuditOutcome, Role } from "@/lib/wms/types"
 
 /**
- * Append-only audit trail.
- *
- * Every mutating API call and every failed authentication writes a record here.
- * The log is never edited or deleted by application code — the only removals
- * happen through an explicit retention job an operator runs by hand.
+ * Best-effort operational audit history. The most recent 5,000 entries are
+ * retained in the same store as the WMS data; older entries are discarded and
+ * audit write failures do not fail the request. This is not a tamper-proof or
+ * durable compliance log — deployments need independent audit infrastructure.
  */
 
 export interface AuditInput {

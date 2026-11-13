@@ -4,6 +4,7 @@ import { ok, toErrorResponse } from "@/lib/api/http"
 import { clientIp, userAgent } from "@/lib/security/audit"
 import { rotateCsrfToken } from "@/lib/security/csrf"
 import { getConfig } from "@/lib/security/config"
+import { partitionPreviewCookies } from "@/lib/security/preview-cookies"
 import { permissionsFor, ROLE_LABELS } from "@/lib/security/rbac"
 import { verifySessionToken } from "@/lib/security/session"
 import { getStore } from "@/lib/wms/store"
@@ -56,7 +57,7 @@ export async function GET(request: NextRequest) {
 
     const response = ok({ authenticated: user !== null, user, csrfToken: csrf.token })
     response.cookies.set(csrf.cookieName, csrf.token, csrf.options)
-    return response
+    return partitionPreviewCookies(response)
   } catch (error) {
     return toErrorResponse(error)
   }

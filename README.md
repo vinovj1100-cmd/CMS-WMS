@@ -3,12 +3,12 @@
 A warehouse management system built on Next.js 14 (App Router, TypeScript). It covers the full
 inbound-to-outbound lifecycle — receiving, putaway, inventory control, wave picking, packing,
 shipping, cycle counting, returns and replenishment — behind a role-permissioned API with an
-append-only audit trail.
+operational audit history.
 
-Everything below has been verified against a running build: the domain layer is covered by
-**99 passing tests** across five suites, `next build` prerenders **12 WMS screens** and serves
-**23 API routes**, and the auth, RBAC, CSRF and rate-limit guards were exercised end to end with
-`curl` against a production-mode server.
+The project includes domain and security tests, 12 WMS screens, and 23 API route files. Browser
+checks cover sign-in, role-appropriate navigation, styling, and the embedded development preview.
+This is an evaluation and development system, **not yet a production-ready deployment**; see the
+[production prerequisites](#production-prerequisites) before using real warehouse data.
 
 ---
 
@@ -35,12 +35,12 @@ Requires Node.js 18.18 or newer. This repo uses pnpm.
 
 ```bash
 corepack enable
-pnpm install
-cp .env.example .env      # every value has a safe default, so this is optional
+pnpm install --frozen-lockfile
+cp .env.example .env      # development-only defaults; file-backed demo data
 pnpm dev                  # http://localhost:3000
 ```
 
-Open **http://localhost:3000/auth/login** and sign in with a demo account:
+Open **http://localhost:3000/** and sign in with a demo account:
 
 | Role              | Username     | Password           |
 | ----------------- | ------------ | ------------------ |
@@ -50,17 +50,18 @@ Open **http://localhost:3000/auth/login** and sign in with a demo account:
 | Operator          | `operator`   | `Wms!Operator2026` |
 | Read-only         | `viewer`     | `Wms!Viewer2026`   |
 
-> These accounts exist only when `WMS_SEED_DEMO_DATA` is enabled, which defaults to **off** in
-> production. They are for evaluation, not for a real deployment.
+> Demo accounts are created when demo seeding is enabled and the store is empty. They are for
+> evaluation only. Disabling seeding later does **not** remove accounts from an existing store.
 
-The app lands on `/wms`. Unauthenticated visitors to any `/wms/*` route are redirected to the
-login screen and returned to where they were headed afterwards.
+The site root opens the WMS. Unauthenticated visitors to any `/wms/*` route are redirected to
+sign-in and returned to the requested page afterwards. Operators without reporting permission
+land on inventory instead of a dashboard they cannot access.
 
 ### Verify the install
 
 ```bash
 pnpm typecheck   # tsc --noEmit
-pnpm test        # 99 domain + security tests
+pnpm test        # domain, security, configuration and startup tests
 pnpm lint        # next lint
 pnpm build       # full production build, prerenders every page
 pnpm check       # all four of the above, in order
@@ -168,18 +169,23 @@ lib/wms/store            Store interface + adapters
 
 Services in `lib/wms/services/` take a `DatabaseSnapshot` and an input, mutate the snapshot, and
 return a result or throw an `ApiError`. They never touch the filesystem, the network, or
-`next/*`. That is what makes them testable in isolation — the 99 tests call the same functions the
-API routes call, with no HTTP or mocking layer in between.
+`next/*`. Domain tests call the same functions as the API routes, without an HTTP layer.
 
 ### Persistence
 
-`Store` is a four-method interface (`read`, `write`, `mutate`, `reset`). All mutation goes through
-`mutate()`, which serialises on a mutex. That serialisation is what stops two concurrent API calls
-from clobbering each other's read-modify-write — there is a test that fires twenty concurrent
-increments through it and asserts none are lost.
+`Store` is a four-method interface (`read`, `write`, `mutate`, `reset`). Mutations are serialised
+by an **in-process** mutex. This protects concurrent requests handled by one server process only;
+it is not a database transaction or a lock shared across processes or hosts.
 
-Swapping in a real database means writing one adapter and nothing else. `getStore()` caches on
-`globalThis` so hot reloads don't drop the data.
+The file adapter writes `data/wms.json` atomically and retains the previous generation as
+`data/wms.json.bak`. The development preview was checked by transferring stock, restarting the
+server, and confirming the balances and audit entry survived; the test transfer was then reversed.
+Both files and temporary writes are ignored by Git. Protect them as sensitive data, and arrange
+independent backups: a single `.bak` is not a backup strategy.
+
+`getStore()` caches on `globalThis` to preserve state during hot reload. A production database
+adapter, migrations, shared rate limiting and operational controls still need to be implemented;
+the bundled file store is for single-process evaluation and development.
 
 ### Numbering
 
@@ -223,24 +229,27 @@ a hot reload doesn't reset an attacker's attempt counter. Accounts lock after
 
 Double-submit cookie. The server sets `wms_csrf` as a **readable** cookie; the client echoes it in
 the `x-wms-csrf` header on every state-changing request. A cross-origin attacker can't read the
-cookie, so it can't populate the header. Requests with no token pair fall back to a strict
-same-origin check, and a malformed `Origin` header is rejected rather than failing open.
+cookie, so it can't populate the header. Login, logout and WMS mutations check CSRF. Requests
+without a token pair must have a matching `Origin` or `Referer`; missing or malformed origins are
+rejected. Non-browser clients must send a matching token pair or a trusted origin.
 
-This sits on top of `SameSite=Lax` — the two are complementary, not redundant.
+Normal sessions also use `SameSite=Lax`. The opt-in embedded development preview uses secure,
+partitioned cross-site cookies instead; never enable it for sensitive data.
 
 ### Audit
 
-Every authenticated action, permission denial and failed sign-in is appended to an audit log.
-**There is no delete path anywhere in the application.** Retention is handled by archiving
-externally. The log is filterable by outcome, which makes `outcome: denied` a useful thing to
-watch.
+The application records successful authenticated writes, permission denials and sign-in events
+when auditing is enabled. The log is filterable by outcome, but it is **best effort**, stored with
+the rest of the snapshot, and limited to the most recent 5,000 entries. It is not signed,
+tamper-proof, or a durable compliance audit trail; write failures are logged to the server console.
+Use independently managed, durable audit logging and alerting before any real deployment.
 
 ### Boot-time configuration gate
 
-`assertSecureConfig()` runs at startup via `instrumentation.ts` and **throws** on fatal
-violations, so a production container refuses to serve traffic with a debug secret or an insane
-TTL. The same findings are surfaced non-fatally by `GET /api/health`, which returns `503` and
-`ready: false` when a fatal violation exists or the dataset is empty.
+`assertSecureConfig()` runs via `instrumentation.ts`. The standalone launcher invokes it before
+binding a port and exits on fatal violations such as a development secret or an invalid TTL. If
+configuration prevents startup, health checks cannot connect; once running, `/api/health` reports
+warnings and returns `503` / `ready: false` when no warehouse is present.
 
 ### Middleware is a navigation guard only
 
@@ -339,23 +348,25 @@ its stock.
 
 ## Configuration
 
-Every variable has a safe default, so the app boots with no `.env` at all. See `.env.example`.
+The application has development defaults, but they are **not safe production defaults**. The
+sample `.env.example` enables persistent demo data for local use; do not reuse it in production.
 
 | Variable                  | Default              | Purpose                                      |
 | ------------------------- | -------------------- | -------------------------------------------- |
 | `NODE_ENV`                | `development`        | `production` turns on the strict config gate  |
-| `NEXT_PUBLIC_SITE_URL`    | `http://localhost:3000` | Origin; used for CSP and CSRF origin checks |
+| `NEXT_PUBLIC_SITE_URL`    | `http://localhost:3000` | Public origin; used in metadata and CSRF origin checks |
 | `WMS_SESSION_SECRET`      | *(dev secret)*       | HMAC key. **Required** in production.         |
 | `WMS_SESSION_TTL_SECONDS` | `28800`              | Session lifetime (8 hours = one shift)        |
 | `WMS_SCRYPT_N`            | `32768`              | Hash cost. 2^15.                              |
 | `WMS_LOGIN_MAX_ATTEMPTS`  | `5`                  | Failures before lockout                       |
 | `WMS_LOGIN_WINDOW_SECONDS`| `900`                | Lockout window                                |
-| `WMS_STORAGE_DRIVER`      | `memory`             | `memory` or `file`                            |
+| `WMS_STORAGE_DRIVER`      | `memory`             | `memory` or `file`; `.env.example` selects `file` |
 | `WMS_DATA_DIR`            | `./data`             | Directory for the `file` driver               |
 | `WMS_SEED_DEMO_DATA`      | on outside production| Seed the demo warehouse and users             |
-| `WMS_SECURE_COOKIES`      | on in production     | `Secure` flag on cookies                      |
+| `WMS_SECURE_COOKIES`      | on in production     | `Secure` flag; always on for embedded preview |
 | `WMS_AUDIT_LOG`           | `true`               | Emit structured audit records                 |
-| `CSP_ENFORCE`             | `false`              | Enforce rather than report-only               |
+| `CSP_ENFORCE`             | `true`               | Set `false` at build time for report-only CSP |
+| `WMS_PREVIEW_EMBED`       | `false`              | Allow framing in development only; demo data only |
 
 Generate a session secret:
 
@@ -379,7 +390,8 @@ These are **warnings**, surfaced by `/api/health` but not fatal:
 - `WMS_SEED_DEMO_DATA` on in production
 - cookies not marked `Secure`
 
-Outside production the same checks report as warnings so local development isn't blocked.
+Outside production, the development-secret checks are warnings; invalid configuration values
+such as an out-of-range TTL remain fatal.
 
 ---
 
@@ -390,69 +402,82 @@ the dependencies actually used.
 
 ### Test
 
-Ephemeral, seeded, no secrets required. This is the configuration CI runs.
+Vitest uses an in-memory store, isolated seeded fixtures and a test-only scrypt cost. It does not
+modify `data/wms.json`:
 
 ```bash
-NODE_ENV=test \
-WMS_STORAGE_DRIVER=memory \
-WMS_SEED_DEMO_DATA=true \
-WMS_SESSION_SECRET="test-secret-at-least-32-characters-long" \
-pnpm build && pnpm start
+pnpm test
+pnpm test:watch
 ```
 
-The test profile deliberately keeps demo data on so fixtures are predictable, and keeps the
-memory driver so each run starts clean.
+For a disposable interactive demo, start the development server with
+`WMS_STORAGE_DRIVER=memory WMS_SEED_DEMO_DATA=true pnpm dev`. Its changes disappear on restart.
 
 ### Develop
 
+Copy `.env.example` to `.env` and run `pnpm dev` as in the quick start. The sample selects the
+file store, so receipts, stock movements and other changes persist across restarts. Seeding occurs
+only when the store is empty; restarting does **not** reset it. Without a `.env` file, the default
+is the ephemeral memory store. To select persistence explicitly:
+
 ```bash
-pnpm dev
+WMS_STORAGE_DRIVER=file WMS_DATA_DIR=./data WMS_SEED_DEMO_DATA=true pnpm dev
 ```
 
-`NODE_ENV=development` relaxes the config gate to warnings, keeps cookies non-`Secure` (local
-traffic is HTTP), and seeds demo data by default. Hot reload preserves the dataset because the
-store is cached on `globalThis`.
-
-For persistence across restarts:
+For an isolated embedded preview behind HTTPS, opt in explicitly and bind the development server
+to all interfaces:
 
 ```bash
-WMS_STORAGE_DRIVER=file WMS_DATA_DIR=./data pnpm dev
+WMS_STORAGE_DRIVER=file WMS_DATA_DIR=./data WMS_SEED_DEMO_DATA=true \
+WMS_PREVIEW_EMBED=true pnpm dev -- -H 0.0.0.0 -p 3000
 ```
 
-### Production
+This preview mode allows framing and uses `Secure; SameSite=None; Partitioned` cookies so modern
+browsers can sign in inside a cross-site iframe. It is **development-only**, requires HTTPS (or
+localhost), and must not be used with sensitive data. Production ignores the flag. If the browser
+does not support partitioned cookies, open the preview in a separate tab.
 
-Three things are non-negotiable:
+### Production prerequisites
 
-1. **Set `WMS_SESSION_SECRET`** to real randomness. The app refuses to start without it.
-2. **Set `WMS_SEED_DEMO_DATA=false`** so no demo credentials exist.
-3. **Persist the data.** The memory driver loses everything on restart. Either mount a volume for
-   the `file` driver or write a database adapter.
+**Do not use the bundled setup for a live warehouse yet.** The file adapter has only a
+process-local lock, rate limits are in-process, the audit log is best-effort and bounded, and there
+is no supported first-admin/warehouse bootstrap when demo seeding is off. Before production, add a
+transactional database adapter and migrations, secure provisioning, shared rate limiting, durable
+audit retention, backups and monitoring, and an independent security review.
+
+With `WMS_SEED_DEMO_DATA=false`, a new empty store has no users or warehouses and `/api/health`
+returns 503; disabling seeding does not remove data or demo users already present. Provision and
+verify a clean store before starting a non-demo deployment. Use a strong `WMS_SESSION_SECRET`,
+serve behind TLS, set `NEXT_PUBLIC_SITE_URL` to the real public origin, and set secure cookies.
+
+For a **pre-production** standalone deployment with an already provisioned store:
 
 ```bash
-NODE_ENV=production \
-NEXT_PUBLIC_SITE_URL="https://wms.example.com" \
+NEXT_PUBLIC_SITE_URL=https://wms.example.com pnpm build
+HOSTNAME=0.0.0.0 \
+NEXT_PUBLIC_SITE_URL=https://wms.example.com \
 WMS_SESSION_SECRET="<48 random bytes, base64url>" \
-WMS_STORAGE_DRIVER=file \
-WMS_DATA_DIR=/var/lib/wms \
-WMS_SEED_DEMO_DATA=false \
-node .next/standalone/server.js
+WMS_STORAGE_DRIVER=file WMS_DATA_DIR=/var/lib/wms WMS_SEED_DEMO_DATA=false \
+pnpm start
 ```
 
-> Note the entry point: with `output: "standalone"`, run `node .next/standalone/server.js` rather
-> than `next start`.
-
-Serve behind TLS. The app sets `Secure` cookies in production and validates the `Origin` header
-against `NEXT_PUBLIC_SITE_URL`, so both need the real public origin.
+`pnpm start` prepares the standalone bundle's static and public assets, loads the project `.env`
+files, and resolves relative data paths from the project root. The generated server changes its
+working directory to `.next/standalone`; running it directly requires copying those assets and
+using an absolute data path. `NEXT_PUBLIC_SITE_URL` and `CSP_ENFORCE` must be set at build time
+as well as appropriately at runtime.
 
 ### Docker
 
+The following is a **pre-production template**, not a turnkey production deployment. It requires
+an already provisioned store and the controls above:
+
 ```bash
-docker build -t wms .
+docker build --build-arg NEXT_PUBLIC_SITE_URL=https://wms.example.com -t wms .
 docker run -d --name wms -p 3000:3000 \
-  -e NODE_ENV=production \
   -e NEXT_PUBLIC_SITE_URL=https://wms.example.com \
   -e WMS_SESSION_SECRET="$(node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))")" \
-  -e WMS_SEED_DEMO_DATA=false \
+  -e WMS_STORAGE_DRIVER=file -e WMS_SEED_DEMO_DATA=false \
   -v wms-data:/app/data \
   wms
 ```
@@ -461,9 +486,9 @@ The container runs as a non-root user, and `/app/data` is the mount point for th
 
 ### Health checking
 
-Point your load balancer at `GET /api/health`. It returns `200` with `ready: true` when the
-configuration is valid and the dataset is non-empty, and `503` with `ready: false` otherwise —
-along with the specific violations.
+Point your load balancer at `GET /api/health`. Once the server is running, it returns `200` with
+`ready: true` when configuration is valid and a warehouse exists, or `503` with `ready: false`
+otherwise. Fatal startup configuration errors can prevent the server from starting at all.
 
 ---
 
@@ -474,19 +499,24 @@ pnpm test          # single run
 pnpm test:watch    # watch mode
 ```
 
-99 tests across five suites. They call the real domain functions with real seeded data; nothing is
-mocked.
+121 tests across eleven suites cover the domain functions, security, startup, navigation and
+preview configuration. Startup tests use a temporary mock standalone bundle.
 
-| Suite                   | Tests | Covers                                                        |
-| ----------------------- | ----- | ------------------------------------------------------------- |
-| `tests/inventory.test.ts`   | 14 | adjustments, transfers, allocation, rollback, derived views    |
-| `tests/inbound.test.ts`     | 10 | PO lifecycle, ASN state machine, receipt, putaway, QC hold     |
-| `tests/outbound.test.ts`    | 18 | allocation atomicity, waves, travel sequencing, pack, ship     |
-| `tests/operations.test.ts`  | 23 | cycle counts, returns, store concurrency and isolation         |
-| `tests/security.test.ts`    | 34 | hashing, policy, CSRF, rate limiting, RBAC, config validation  |
+| Suite                         | Tests | Covers                                                   |
+| ----------------------------- | ----- | -------------------------------------------------------- |
+| `tests/inventory.test.ts`     | 14 | adjustments, transfers, allocation and derived views     |
+| `tests/inbound.test.ts`       | 10 | PO lifecycle, ASN, receipt, putaway and QC hold          |
+| `tests/outbound.test.ts`      | 18 | allocation, waves, picking, packing and shipping        |
+| `tests/operations.test.ts`    | 23 | cycle counts, returns and store concurrency              |
+| `tests/security.test.ts`      | 35 | hashing, policy, CSRF, rate limiting, RBAC and config    |
+| `tests/navigation.test.ts`    | 7  | WMS root and role-appropriate landing                   |
+| `tests/preview-config.test.ts`| 5  | CSP, framing and the startup hook                       |
+| `tests/preview-cookies.test.ts` | 3 | preview-only partitioned cookie attributes             |
+| `tests/postcss-config.test.ts`| 1  | Next.js PostCSS discovery and Tailwind compilation       |
+| `tests/start-script.test.ts`  | 3  | standalone preparation and fail-closed config gate       |
+| `tests/auth-routes.test.ts`   | 2  | CSRF protection on login and logout                     |
 
-Tests run under Vitest with `WMS_SCRYPT_N=4096`. That is a real scrypt path at a cost that keeps
-the suite around two seconds; production keeps 32768.
+Tests use `WMS_SCRYPT_N=4096`; production defaults to 32768.
 
 ---
 
@@ -515,6 +545,7 @@ lib/
   wms/
     types.ts                   every domain type
     schemas.ts                 zod validation for every request
+    navigation.ts              role-appropriate default workspace
     services/                  pure domain logic
       inventory.ts  inbound.ts  outbound.ts
       cycle-count.ts  operations.ts  reports.ts
@@ -529,14 +560,17 @@ lib/
     rbac.ts                    permissions and roles
     rate-limit.ts              token buckets
     csrf.ts                    double-submit cookie
-    audit.ts                   append-only log
+    preview-cookies.ts         development-only iframe cookie isolation
+    audit.ts                   bounded operational audit history
   api/
     http.ts                    ApiError, JSON helpers
     guard.ts                   withAuth request pipeline
     client.ts                  browser fetch wrapper
 middleware.ts                  navigation guard
 instrumentation.ts             boot-time config gate
-tests/                         99 tests
+postcss.config.cjs             Tailwind and Autoprefixer for Next 14
+scripts/{start,standalone-entry}.mjs  prepare, validate and start standalone output
+tests/                         domain, security and workflow tests
 ```
 
 ---
@@ -563,7 +597,7 @@ lots with staggered expiry dates so FEFO allocation has something to work with, 
 ASNs, orders, waves, counts and RMAs sits across every state of every workflow so no screen is
 empty on first load.
 
-Turn it off with `WMS_SEED_DEMO_DATA=false` and the store starts empty.
+With `WMS_SEED_DEMO_DATA=false`, a new store starts empty; existing demo data is not removed.
 
 ---
 

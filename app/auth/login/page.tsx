@@ -31,8 +31,8 @@ export default function LoginPage() {
             Every unit accounted for, from dock to dispatch.
           </h1>
           <p className="mt-4 max-w-md text-lg leading-relaxed text-slate-300">
-            Receiving, putaway, inventory control, wave picking, packing, shipping, cycle counts and returns — with a
-            signed audit trail behind every movement.
+            Receiving, putaway, inventory control, wave picking, packing, shipping, cycle counts and returns — with
+            an operational audit history.
           </p>
         </div>
 
@@ -47,7 +47,7 @@ export default function LoginPage() {
           </li>
           <li className="flex items-start gap-3">
             <ShieldCheck className="mt-0.5 h-4 w-4 flex-shrink-0 text-blue-400" />
-            <span>Role-based permissions, rate limiting and an append-only audit log</span>
+            <span>Role-based permissions, rate limiting and an operational audit history</span>
           </li>
         </ul>
       </div>
