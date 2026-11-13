@@ -84,7 +84,7 @@ export default function SecuritySettings() {
           {twoFactorEnabled && (
             <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
               <p className="text-sm text-blue-800 dark:text-blue-200">
-                Two-factor authentication is enabled. You'll need to enter a code from your authenticator app when
+                Two-factor authentication is enabled. You&apos;ll need to enter a code from your authenticator app when
                 signing in.
               </p>
               <Button variant="outline" size="sm" className="mt-2 bg-transparent">

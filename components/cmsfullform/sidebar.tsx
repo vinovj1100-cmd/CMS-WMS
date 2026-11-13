@@ -63,6 +63,8 @@ import {
 } from "lucide-react"
 import Link from "next/link"
 import { useState, useEffect } from "react"
+import { useRouter } from "next/navigation"
+import { useRequiredSidebarState } from "@/components/app-shell/sidebar-context"
 import { cn } from "@/lib/utils"
 
 type MenuState = "full" | "collapsed" | "hidden"
@@ -720,35 +722,21 @@ const menuData: MenuSection[] = [
 ]
 
 export default function Sidebar() {
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
-  const [menuState, setMenuState] = useState<MenuState>("full")
-  const [isHovered, setIsHovered] = useState(false)
+  // Presentation state lives in a shared context so the top navigation and the
+  // appearance customizer can drive the sidebar without global side effects.
+  const {
+    menuState,
+    setMenuState,
+    isHovered,
+    setIsHovered,
+    isMobile,
+    setIsMobile,
+    isMobileMenuOpen,
+    setIsMobileMenuOpen,
+  } = useRequiredSidebarState()
+  const router = useRouter()
   const [previousDesktopState, setPreviousDesktopState] = useState<MenuState>("full")
-  const [isMobile, setIsMobile] = useState(false)
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set())
-
-  // Cycle through menu states: full -> collapsed -> hidden -> full
-  const toggleMenuState = () => {
-    setMenuState((prev) => {
-      switch (prev) {
-        case "full":
-          return "collapsed"
-        case "collapsed":
-          return "hidden"
-        case "hidden":
-          return "full"
-        default:
-          return "full"
-      }
-    })
-  }
-
-  // Function to set menu state from theme customizer
-  const setMenuStateFromCustomizer = (state: MenuState) => {
-    if (!isMobile) {
-      setMenuState(state)
-    }
-  }
 
   // Handle responsive behavior
   useEffect(() => {
@@ -777,20 +765,7 @@ export default function Sidebar() {
     window.addEventListener("resize", handleResize)
 
     return () => window.removeEventListener("resize", handleResize)
-  }, [menuState, previousDesktopState])
-
-  // Export functions to window for TopNav and ThemeCustomizer to access
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      ;(window as any).toggleMenuState = toggleMenuState
-      ;(window as any).menuState = menuState
-      ;(window as any).isHovered = isHovered
-      ;(window as any).isMobile = isMobile
-      ;(window as any).setIsMobileMenuOpen = setIsMobileMenuOpen
-      ;(window as any).isMobileMenuOpen = isMobileMenuOpen
-      ;(window as any).setMenuStateFromCustomizer = setMenuStateFromCustomizer
-    }
-  }, [menuState, isHovered, isMobile, isMobileMenuOpen])
+  }, [menuState, previousDesktopState, setIsMobile, setMenuState])
 
   function handleNavigation() {
     if (isMobile) {
@@ -837,14 +812,14 @@ export default function Sidebar() {
           if (hasChildren) {
             toggleExpanded(itemId)
           } else if (item.href) {
-            // Navigate to the href
-            window.location.href = item.href
+            // Client-side navigation keeps the sidebar and scroll position alive.
+            router.push(item.href)
             handleNavigation()
           }
         }}
         title={menuState === "collapsed" && !isHovered && !isMobile ? item.label : undefined}
       >
-        <item.icon className="h-4 w-4 flex-shrink-0 sidebar-menu-icon" />
+        {item.icon && <item.icon className="h-4 w-4 flex-shrink-0 sidebar-menu-icon" />}
 
         {showText && (
           <>

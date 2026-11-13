@@ -1,0 +1,49 @@
+# Keep the build context small and stop local state leaking into the image.
+
+# Dependencies — reinstalled in the deps stage from the lockfile.
+node_modules
+
+# Build output — rebuilt in the build stage.
+.next
+.standalone
+out
+dist
+build
+
+# Local WMS data. Seeding is explicit via WMS_SEED_DEMO_DATA; a local JSON
+# store must never be baked into an image.
+data
+*.json.tmp
+
+# Environment files. Configuration belongs in the container environment, not
+# in the image layer.
+.env
+.env.*
+!.env.example
+
+# Version control and editor state.
+.git
+.gitignore
+.github
+.idea
+.vscode
+*.swp
+.DS_Store
+
+# Logs and caches.
+*.log
+npm-debug.log*
+.cache
+coverage
+.turbo
+.eslintcache
+
+# Tests and docs are not needed to run the server.
+tests
+vitest.config.ts
+*.md
+!README.md
+
+# This file and the Dockerfile itself.
+Dockerfile
+.dockerignore
